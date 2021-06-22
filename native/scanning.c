@@ -316,6 +316,113 @@ static inline int64_t advance_number(const GoString *src, long *p, long i, JsonS
     return rvt;
 }
 
+static inline char string_equal(const char *a, ssize_t alen, const char *b, ssize_t blen) {
+    if (alen != blen) {
+        return 0;
+    }
+    for (int i=0; i<alen; i++) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static inline long search_key(const GoString *src, const char *key, size_t klen, GoSlice *buf, long *p, StateMachine *sm) {
+    size_t ns = src->len;
+    if (advance_ns(src, p) != '{') {
+        return -ERR_INVAL;
+    }
+
+    *p = lspace(src->buf, src->len, *p);
+    if (*p >= ns) {
+        return -ERR_EOF;
+    }
+
+    if (src->buf[*p] == '}') {
+        (*p)++;
+        return -ERR_NOT_FOUND;
+    }
+
+    while (*p < ns) {
+        int64_t ep = -1;
+        long s = *p;
+        long ret = advance_string(src, p, &ep);
+        if (ret < 0) {
+            return ret;
+        }
+
+        const char *jkey = &src->buf[s];
+        ssize_t jlen = *p - s;
+        if (buf->cap < jlen) {
+            return -ERR_EOF;
+        }
+
+        if (ep != -1) {
+            ssize_t xp = -1;
+            jlen = unquote(&src->buf[s], jlen, buf->buf, &xp, 0);
+            if (jlen < 0) {
+                return -jlen;
+            }
+            buf->len = jlen;
+            jkey = &buf->buf[0];
+        }
+
+        if (advance_ns(src, p) != ':') {
+            return -ERR_INVAL;
+        }
+
+        if (string_equal(jkey, jlen, key, klen) == 1) {
+            return 0;
+        }
+
+        ret = skip_one(src, p, sm);
+        if (ret < 0) {
+            return ret;
+        }
+
+        switch (advance_ns(src, p)) {
+            case ',': continue;
+            case '}': return -ERR_NOT_FOUND;
+            default : return -ERR_INVAL;
+        }
+    }
+
+    return -ERR_NOT_FOUND;
+}
+
+static inline long search_index(const GoString *src, int index, long *p, StateMachine *sm) {
+    size_t ns = src->len;
+    if (advance_ns(src, p) != '[') {
+        return -ERR_INVAL;
+    }
+
+    *p = lspace(src->buf, src->len, *p);
+    if (*p >= ns) {
+        return -ERR_EOF;
+    }
+
+    if (src->buf[*p] == ']') {
+        (*p)++;
+        return -ERR_NOT_FOUND;
+    }
+
+    for (int i = 0; i < index; i++ ) {
+        long ret = skip_one(src, p, sm);
+        if (ret < 0) {
+            return ret;
+        }
+
+        switch (advance_ns(src, p)) {
+            case ',': continue;
+            case ']': return -ERR_NOT_FOUND;
+            default : return -ERR_INVAL;
+        }
+    }
+
+    return 0;
+}
+
 /** Value Scanning Routines **/
 
 long value(const char *s, size_t n, long p, JsonState *ret, int allow_control) {
@@ -798,3 +905,24 @@ long skip_positive(const GoString *src, long *p) {
         return q;
     }
 }
+
+long search(const GoString *src, Paths *ps, GoSlice *buf, long *p, StateMachine *sm) {
+    for (int stack = 0; stack < ps->len; stack++) {
+        GoPath path = ps->ps[stack];
+        if (path.i >= 0) {
+            long ret = search_index(src, path.i, p, sm);
+            if (ret < 0) {
+                return ret;
+            }
+        }else{
+            size_t ns = -path.i - 1;
+            long ret = search_key(src, path.s, ns, buf, p, sm);
+            if (ret < 0) {
+                return ret;
+            }
+        }
+    }
+
+    return skip_one(src, p, sm);
+}
+

@@ -166,14 +166,16 @@ static inline size_t strchr2_avx2(__m256i v0, uint64_t c0, uint64_t c1) {
 #endif
 
 #define is_quote(c) ((c) == '"' || (c) == '\\' || ((c) >= 0 && (c) <= 31))
-#define is_space(c) ((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) == '\r')
+
+const int64_t _SPACE_MASK = (1l << ' ') | (1l << '\t') | (1l << '\r') | (1l << '\n');
+#define not_space(c) (((1ll << c) && _SPACE_MASK) == 0)
 
 static inline size_t lspace_p(const char *s, size_t nb) {
 #if USE_SSE
     do_simd(lspace)
 #else
     size_t i = 0;
-    while (i < nb && !is_space(s[i])) i++;
+    while (i < nb && not_space(s[i])) i++;
     return i;
 #endif
 }

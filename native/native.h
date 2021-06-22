@@ -49,6 +49,7 @@
 #define ERR_OVERFLOW    5
 #define ERR_NUMBER_FMT  6
 #define ERR_RECURSE_MAX 7
+#define ERR_NOT_FOUND   8
 
 #define MAX_RECURSE     65536
 
@@ -89,6 +90,16 @@ typedef struct {
     int vt[MAX_RECURSE];
 } StateMachine;
 
+typedef struct {
+    long   i;
+    char * s;
+} GoPath;
+
+typedef struct {
+    GoPath * ps;
+    size_t   len;
+} Paths;
+
 int f64toa(char *out, double val);
 int i64toa(char *out, int64_t val);
 int u64toa(char *out, uint64_t val);
@@ -114,5 +125,7 @@ long skip_object(const GoString *src, long *p, StateMachine *m);
 long skip_string(const GoString *src, long *p);
 long skip_negative(const GoString *src, long *p);
 long skip_positive(const GoString *src, long *p);
+
+long search(const GoString *src, Paths *ps, GoSlice *buf, long *p, StateMachine *m);
 
 #endif
